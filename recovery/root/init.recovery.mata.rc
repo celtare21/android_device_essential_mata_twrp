@@ -1,0 +1,106 @@
+import /init.recovery.usb.rc
+
+on fs
+    wait /dev/block/platform/soc/1da4000.ufshc
+    symlink /dev/block/platform/soc/1da4000.ufshc /dev/block/bootdevice
+
+    chmod 0660 /dev/qseecom
+    chown system drmrpc /dev/qseecom
+    chmod 0664 /dev/ion
+    chown system system /dev/ion
+    setprop ro.hardware.bootctrl msm8998
+    install_keyring
+    start adbd
+    setprop crypto.ready 1
+
+on early-boot
+    # Touch
+    chmod 0666 /sys/kernel/boot_adsp/boot
+    chmod 0666 /sys/kernel/boot_slpi/boot
+    write /sys/kernel/boot_adsp/boot 1
+    write /sys/kernel/boot_slpi/boot 1
+    mkdir /hbtp 0777
+#    start sbinadsprpcd
+    start hbtp
+
+service sbinqseecomd /sbin/qseecomd
+    oneshot
+    disabled
+    user root
+    group root
+    seclabel u:r:recovery:s0
+
+#service sbinadsprpcd /sbin/adsprpcd
+#    user root
+#    group root
+#    disabled
+#    seclabel u:r:recovery:s0
+
+service hbtp /sbin/hbtp.sh
+    user root
+    group root
+    disabled
+    seclabel u:r:recovery:s0
+
+service hwservicemanager /sbin/hwservicemanager
+    user root
+    group root
+    disabled
+    onrestart setprop hwservicemanager.ready false
+    seclabel u:r:recovery:s0
+
+service servicemanager /sbin/servicemanager
+    disabled
+    user root
+    group root readproc
+    seclabel u:r:recovery:s0
+    writepid /dev/cpuset/system-background/tasks
+
+service keymaster-3-0 /sbin/keymaster-3-0.sh
+    user root
+    group root
+    disabled
+    seclabel u:r:recovery:s0
+
+service gatekeeper-1-0 /sbin/android.hardware.gatekeeper@1.0-service
+    user root
+    group root
+    disabled
+    seclabel u:r:recovery:s0
+
+#service boot-1-0 /sbin/android.hardware.boot@1.0-service
+#    user root
+#    group root
+#    seclabel u:r:recovery:s0
+
+# keystore is started and stopped on demand by TWRP
+service keystore /sbin/keystore /tmp/misc/keystore
+    disabled
+    user root
+    group root drmrpc readproc
+    seclabel u:r:recovery:s0
+    writepid /dev/cpuset/foreground/tasks
+
+service keystore_auth /sbin/keystore_auth
+    disabled
+    oneshot
+    user system
+    group root
+    seclabel u:r:recovery:s0
+
+on property:crypto.ready=0
+    stop sbinqseecomd
+    stop keymaster-3-0
+    stop gatekeeper-1-0
+    stop hwservicemanager
+    stop keystore
+    stop servicemanager
+
+on property:crypto.ready=1
+    start sbinqseecomd
+
+on property:sys.listeners.registered=true
+    start hwservicemanager
+    start keymaster-3-0
+    start gatekeeper-1-0
+    start servicemanager
